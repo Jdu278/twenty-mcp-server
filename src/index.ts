@@ -46,7 +46,7 @@ interface McpToolDefinition {
  */
 export const SERVER_NAME = "twenty-mcp-server";
 export const SERVER_VERSION = "v0.1";
-export const API_BASE_URL = "https://crm.kipotsdam.de/rest";
+export const TWENTY_BASE_URL = process.env['TWENTY_BASE_URL'];
 
 /**
  * MCP Server instance
@@ -2657,7 +2657,7 @@ async function executeApiTool(
     }
     
     // Construct the full URL
-    const requestUrl = API_BASE_URL ? `${API_BASE_URL}${urlPath}` : urlPath;
+    const requestUrl = TWENTY_BASE_URL ? `${TWENTY_BASE_URL}${urlPath}` : urlPath;
 
     // Handle request body if needed
     if (definition.requestBodyContentType && typeof validatedArgs['requestBody'] !== 'undefined') {
@@ -2682,7 +2682,7 @@ async function executeApiTool(
             // HTTP security (basic, bearer)
             if (scheme.type === 'http') {
                 if (scheme.scheme?.toLowerCase() === 'bearer') {
-                    return !!process.env[`BEARER_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
+                    return !!process.env['TWENTY_API_KEY'];
                 }
                 else if (scheme.scheme?.toLowerCase() === 'basic') {
                     return !!process.env[`BASIC_USERNAME_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`] && 
@@ -2746,7 +2746,7 @@ async function executeApiTool(
             // HTTP security (Bearer or Basic)
             else if (scheme?.type === 'http') {
                 if (scheme.scheme?.toLowerCase() === 'bearer') {
-                    const token = process.env[`BEARER_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
+                    const token = process.env['TWENTY_API_KEY'];
                     if (token) {
                         headers['authorization'] = `Bearer ${token}`;
                         console.error(`Applied Bearer token for '${schemeName}'`);
@@ -2904,7 +2904,7 @@ async function main() {
   try {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error(`${SERVER_NAME} MCP Server (v${SERVER_VERSION}) running on stdio${API_BASE_URL ? `, proxying API at ${API_BASE_URL}` : ''}`);
+    console.error(`${SERVER_NAME} MCP Server (v${SERVER_VERSION}) running on stdio${TWENTY_BASE_URL ? `, proxying API at ${TWENTY_BASE_URL}` : ''}`);
   } catch (error) {
     console.error("Error during server startup:", error);
     process.exit(1);
