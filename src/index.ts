@@ -32,7 +32,7 @@ import {
   buildToolDefinitionMap, 
   parseArgs 
 } from './tools/index.js';
-import { McpToolDefinition } from './tools/types.js';
+import { McpToolDefinition } from './tools/McpToolDefinition.js';
 
 /**
  * Server configuration
