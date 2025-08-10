@@ -1,4 +1,4 @@
-import { McpToolDefinition, ToolDefinitionMap } from './types.js';
+import { ToolDefinitionMap } from './McpToolDefinition.js';
 
 /**
  * Calendar-related tool definitions for CalendarChannels, CalendarEvents, CalendarEventParticipants, and CalendarChannelEventAssociations

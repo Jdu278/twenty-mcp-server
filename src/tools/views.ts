@@ -1,4 +1,4 @@
-import { McpToolDefinition, ToolDefinitionMap } from './types.js';
+import { ToolDefinitionMap } from './McpToolDefinition.js';
 
 /**
  * Data Views & Filtering tool definitions

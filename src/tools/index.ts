@@ -1,4 +1,4 @@
-import { ToolDefinitionMap } from './types.js';
+import { ToolDefinitionMap } from './McpToolDefinition.js';
 import { apiSchemaToolDefinitions } from './api-schema.js';
 import { crmToolDefinitions } from './crm.js';
 import { tasksToolDefinitions } from './tasks.js';
@@ -9,6 +9,7 @@ import { preferencesToolDefinitions } from './preferences.js';
 import { viewsToolDefinitions } from './views.js';
 import { workflowToolDefinitions } from './workflow.js';
 import { systemToolDefinitions } from './system.js';
+import { attachmentsToolDefinitions } from './attachments.js';
 
 /**
  * Available tool categories
@@ -18,6 +19,7 @@ export const TOOL_CATEGORIES = {
   'crm': 'CRM & Contact Management', 
   'tasks': 'Task & Project Management',
   'notes': 'Notes & Documentation',
+  'attachments': 'Attachments',
   'calendar': 'Calendar & Events',
   'messaging': 'Messaging & Communication',
   'preferences': 'User Preferences & Organization',
@@ -36,6 +38,7 @@ const categoryToolMaps: Record<CategoryKey, ToolDefinitionMap> = {
   'crm': crmToolDefinitions,
   'tasks': tasksToolDefinitions,
   'notes': notesToolDefinitions,
+  'attachments': attachmentsToolDefinitions,
   'calendar': calendarToolDefinitions,
   'messaging': messagingToolDefinitions,
   'preferences': preferencesToolDefinitions,
