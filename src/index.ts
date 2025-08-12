@@ -42,9 +42,8 @@ export const SERVER_VERSION = "v0.1";
 export const TWENTY_BASE_URL = process.env['TWENTY_BASE_URL'];
 
 // Parse arguments and build tool definition map
-const { enabledCategories } = parseArgs();
-const toolDefinitionMap = buildToolDefinitionMap(enabledCategories);
-
+const { enabledCategories, specificTools } = parseArgs();
+const toolDefinitionMap = buildToolDefinitionMap(enabledCategories, specificTools);
 /**
  * MCP Server instance
  */
