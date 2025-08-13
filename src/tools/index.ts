@@ -1,51 +1,6 @@
-import { ToolDefinitionMap } from './McpToolDefinition.js';
-import { apiSchemaToolDefinitions } from './api-schema.js';
-import { crmToolDefinitions } from './crm.js';
-import { tasksToolDefinitions } from './tasks.js';
-import { notesToolDefinitions } from './notes.js';
-import { calendarToolDefinitions } from './calendar.js';
-import { messagingToolDefinitions } from './messaging.js';
-import { preferencesToolDefinitions } from './preferences.js';
-import { viewsToolDefinitions } from './views.js';
-import { workflowToolDefinitions } from './workflow.js';
-import { systemToolDefinitions } from './system.js';
-import { attachmentsToolDefinitions } from './attachments.js';
-
-/**
- * Available tool categories
- */
-export const TOOL_CATEGORIES = {
-  'api-schema': 'API Schema & Metadata',
-  'crm': 'CRM & Contact Management', 
-  'tasks': 'Task & Project Management',
-  'notes': 'Notes & Documentation',
-  'attachments': 'Attachments',
-  'calendar': 'Calendar & Events',
-  'messaging': 'Messaging & Communication',
-  'preferences': 'User Preferences & Organization',
-  'views': 'Data Views & Filtering',
-  'workflow': 'Workflow & Automation',
-  'system': 'System & Admin'
-} as const;
-
-export type CategoryKey = keyof typeof TOOL_CATEGORIES;
-
-/**
- * Map of category keys to their tool definition maps
- */
-const categoryToolMaps: Record<CategoryKey, ToolDefinitionMap> = {
-  'api-schema': apiSchemaToolDefinitions,
-  'crm': crmToolDefinitions,
-  'tasks': tasksToolDefinitions,
-  'notes': notesToolDefinitions,
-  'attachments': attachmentsToolDefinitions,
-  'calendar': calendarToolDefinitions,
-  'messaging': messagingToolDefinitions,
-  'preferences': preferencesToolDefinitions,
-  'views': viewsToolDefinitions,
-  'workflow': workflowToolDefinitions,
-  'system': systemToolDefinitions
-};
+import { ToolDefinitionMap } from '../types/McpToolDefinition.js';
+import { CategoryKey, TOOL_CATEGORIES } from '../types/ToolCategories.js';
+import { categoryToolMaps } from '../types/CategoryToolMaps.js';
 
 /**
  * Build combined tool definition map based on enabled categories and specific tools
@@ -92,11 +47,11 @@ export function parseArgs(): { enabledCategories: Set<CategoryKey>, specificTool
   const args = process.argv.slice(2);
   const enabledCategories = new Set<CategoryKey>();
   const specificTools = new Set<string>();
-  
+
   // Default to all categories if no specific categories or tools are requested
   let hasSpecificCategories = false;
   let hasSpecificTools = false;
-  
+
   for (const arg of args) {
     if (arg.startsWith('--category=')) {
       const categories = arg.split('=')[1].split(',');
@@ -118,13 +73,13 @@ export function parseArgs(): { enabledCategories: Set<CategoryKey>, specificTool
       });
     }
   }
-  
+
   // If no specific categories or tools requested, enable all categories
   if (!hasSpecificCategories && !hasSpecificTools) {
     Object.keys(TOOL_CATEGORIES).forEach(cat => {
       enabledCategories.add(cat as CategoryKey);
     });
   }
-  
+
   return { enabledCategories, specificTools };
 }

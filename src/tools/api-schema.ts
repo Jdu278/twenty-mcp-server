@@ -1,4 +1,4 @@
-import { ToolDefinitionMap } from './McpToolDefinition.js';
+import { ToolDefinitionMap } from '../types/McpToolDefinition.js';
 
 /**
  * API Schema-related tool definitions

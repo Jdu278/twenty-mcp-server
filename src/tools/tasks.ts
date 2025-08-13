@@ -1,4 +1,4 @@
-import { ToolDefinitionMap } from './McpToolDefinition.js';
+import { ToolDefinitionMap } from '../types/McpToolDefinition.js';
 
 /**
  * Task-related tool definitions for Tasks and TaskTargets
