@@ -21,18 +21,14 @@ import {
 import { z, ZodError } from 'zod';
 import { jsonSchemaToZod } from 'json-schema-to-zod';
 import axios, { type AxiosRequestConfig, type AxiosError } from 'axios';
-
-/**
- * Type definition for JSON objects
- */
-type JsonObject = Record<string, any>;
-
-import { 
-  TOOL_CATEGORIES, 
+import {
   buildToolDefinitionMap, 
   parseArgs 
 } from './tools/index.js';
-import { McpToolDefinition } from './tools/McpToolDefinition.js';
+import { TOOL_CATEGORIES } from "./types/ToolCategories.js"
+import { McpToolDefinition } from './types/McpToolDefinition.js';
+import { JsonObject } from './types/JsonObject.js';
+import { securitySchemes } from './types/SecuritySchemes.js';
 
 /**
  * Server configuration
@@ -51,18 +47,6 @@ const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { capabilities: { tools: {} } }
 );
-
-/**
- * Security schemes from the OpenAPI spec
- */
-const securitySchemes = {
-    "bearerAuth": {
-      "type": "http",
-      "scheme": "bearer",
-      "bearerFormat": "JWT",
-      "description": "Enter the token with the `Bearer: ` prefix, e.g. \"Bearer abcde12345\"."
-    }
-  };
 
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -86,22 +70,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
   return await executeApiTool(toolName, toolDefinition, toolArgs ?? {}, securitySchemes);
 });
 
-
-
-/**
- * Type definition for cached OAuth tokens
- */
-interface TokenCacheEntry {
-    token: string;
-    expiresAt: number;
-}
-
-/**
- * Declare global __oauthTokenCache property for TypeScript
- */
-declare global {
-    var __oauthTokenCache: Record<string, TokenCacheEntry> | undefined;
-}
 
 /**
  * Acquires an OAuth2 token using client credentials flow

@@ -1,4 +1,4 @@
-import { ToolDefinitionMap } from './McpToolDefinition.js';
+import { ToolDefinitionMap } from '../types/McpToolDefinition.js';
 
 /**
  * CRM-related tool definitions for Companies, People, and Opportunities
