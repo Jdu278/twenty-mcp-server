@@ -121,3 +121,5 @@ Use both approaches together:
 > [!NOTE]
 > **Default Configuration**  
 > If neither `--category` nor `--tools` arguments are provided, **all categories are enabled by default**. This gives you access to the complete Twenty API but will impact performance and costs due to the large number of available tools.
+
+[![MCP Badge](https://lobehub.com/badge/mcp/jdu278-twenty-mcp-server)](https://lobehub.com/mcp/jdu278-twenty-mcp-server)
