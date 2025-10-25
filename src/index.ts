@@ -13,6 +13,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   type Tool,
   type CallToolResult,
   type CallToolRequest
@@ -29,6 +31,7 @@ import { TOOL_CATEGORIES } from "./types/ToolCategories.js"
 import { McpToolDefinition } from './types/McpToolDefinition.js';
 import { JsonObject } from './types/JsonObject.js';
 import { securitySchemes } from './types/SecuritySchemes.js';
+import { RESOURCES } from './resources/index.js';
 
 /**
  * Server configuration
@@ -45,7 +48,10 @@ const toolDefinitionMap = buildToolDefinitionMap(enabledCategories, specificTool
  */
 const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } }
+    { capabilities: {
+        tools: {},
+        resources: {}
+    } }
 );
 
 
@@ -66,8 +72,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
     console.error(`Error: Unknown tool requested: ${toolName}`);
     return { content: [{ type: "text", text: `Error: Unknown tool requested: ${toolName}` }] };
   }
-  
+
   return await executeApiTool(toolName, toolDefinition, toolArgs ?? {}, securitySchemes);
+});
+
+// Resources handlers
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  return {
+    resources: RESOURCES.map(r => ({
+      uri: r.uri,
+      name: r.name,
+      description: r.description,
+      mimeType: r.mimeType,
+      annotations: r.annotations
+    }))
+  };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+
+  const resource = RESOURCES.find(r => r.uri === uri);
+
+  if (!resource) {
+    throw new Error(`Resource not found: ${uri}`);
+  }
+
+  return {
+    contents: [resource]
+  };
 });
 
 
