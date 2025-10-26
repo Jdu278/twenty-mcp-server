@@ -13,8 +13,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
   type Tool,
   type CallToolResult,
   type CallToolRequest
@@ -24,14 +22,15 @@ import { z, ZodError } from 'zod';
 import { jsonSchemaToZod } from 'json-schema-to-zod';
 import axios, { type AxiosRequestConfig, type AxiosError } from 'axios';
 import {
-  buildToolDefinitionMap, 
-  parseArgs 
+  buildToolDefinitionMap,
+  parseArgs
 } from './tools/index.js';
 import { TOOL_CATEGORIES } from "./types/ToolCategories.js"
 import { McpToolDefinition } from './types/McpToolDefinition.js';
 import { JsonObject } from './types/JsonObject.js';
 import { securitySchemes } from './types/SecuritySchemes.js';
-import { RESOURCES } from './resources/index.js';
+import { getInstructionsContent } from './instructions/instructions.js';
+import { instructionsTool, handleInstructionsTool } from './instructions/instructionsTool.js';
 
 /**
  * Server configuration
@@ -43,30 +42,43 @@ export const TWENTY_BASE_URL = process.env['TWENTY_BASE_URL'];
 // Parse arguments and build tool definition map
 const { enabledCategories, specificTools } = parseArgs();
 const toolDefinitionMap = buildToolDefinitionMap(enabledCategories, specificTools);
+
 /**
  * MCP Server instance
  */
 const server = new Server(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: {
-        tools: {},
-        resources: {}
-    } }
+    {
+        capabilities: {
+            tools: {}
+        },
+        instructions: getInstructionsContent()
+    }
 );
 
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const toolsForClient: Tool[] = Array.from(toolDefinitionMap.values()).map((def) => ({
-    name: (def as McpToolDefinition).name,
-    description: (def as McpToolDefinition).description,
-    inputSchema: (def as McpToolDefinition).inputSchema
-  }));
+  // Add the instructions tool as the first tool
+  const toolsForClient: Tool[] = [
+    instructionsTool,
+    ...Array.from(toolDefinitionMap.values()).map((def) => ({
+      name: (def as McpToolDefinition).name,
+      description: (def as McpToolDefinition).description,
+      inputSchema: (def as McpToolDefinition).inputSchema
+    }))
+  ];
   return { tools: toolsForClient };
 });
 
 
 server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest): Promise<CallToolResult> => {
   const { name: toolName, arguments: toolArgs } = request.params;
+
+  // Handle the instructions tool
+  if (toolName === instructionsTool.name) {
+    return handleInstructionsTool();
+  }
+
   const toolDefinition = toolDefinitionMap.get(toolName);
   if (!toolDefinition) {
     console.error(`Error: Unknown tool requested: ${toolName}`);
@@ -76,32 +88,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
   return await executeApiTool(toolName, toolDefinition, toolArgs ?? {}, securitySchemes);
 });
 
-// Resources handlers
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-  return {
-    resources: RESOURCES.map(r => ({
-      uri: r.uri,
-      name: r.name,
-      description: r.description,
-      mimeType: r.mimeType,
-      annotations: r.annotations
-    }))
-  };
-});
-
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const { uri } = request.params;
-
-  const resource = RESOURCES.find(r => r.uri === uri);
-
-  if (!resource) {
-    throw new Error(`Resource not found: ${uri}`);
-  }
-
-  return {
-    contents: [resource]
-  };
-});
 
 
 /**

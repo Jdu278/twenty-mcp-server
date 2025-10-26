@@ -2,13 +2,13 @@
 
 An MCP server for integrating with [Twenty CRM](https://github.com/twentyhq/twenty), providing access to Twenty's REST API through categorized tools. The available tools map the entire Twenty REST API and were automatically generated using the [openapi-mcp-generator](https://github.com/harsha-iiiv/openapi-mcp-generator).
 
-> [!CAUTION]
-> **Development Version**  
-> This server is currently in development and is **not recommended for production use**. Use at your own risk in production environments.
+## Installation
 
-> [!CAUTION]
-> **For local use**  
-> This MCP server provides access to your Twenty CRM API using your api-key. It has **no built-in authorization, authentication, or access controls**.
+Clone the repository and build: `npm install && npm run build`
+
+## Usage Instructions
+
+The server includes usage instructions in `src/instructions/instructions.md` containing best practices discovered through experimentation (e.g., workflow requirements, formatting conventions, search tips). These can be customized for your specific use case by editing the file and rebuilding with `npm run build`.
 
 ## Tool Filtering
 
@@ -81,7 +81,7 @@ Select individual tools by their names:
       "command": "node",
       "args": [
         "/path/to/twenty-mcp-server/build/index.js",
-        "--tools=findManyCompanies,createOneCompany,findOneCompany,UpdateOneCompany,findManyPeople,createOnePerson,findOnePerson,UpdateOnePerson,findManyTasks,createOneTask,createManyTasks,findOneTask,UpdateOneTask"
+        "--tools=findManyCompanies, createOneCompany, findOneCompany, UpdateOneCompany, findManyPeople, createOnePerson, findOnePerson, UpdateOnePerson,findOneNote, findManyNotes, createOneNote, createManyNotes, UpdateOneNote, createOneNoteTarget, createManyNoteTargets, findManyOpportunities, createOneOpportunity, findOneOpportunity, UpdateOneOpportunity"
       ],
       "env": {
         "TWENTY_BASE_URL": "https://your-twenty-instance.com/rest",
@@ -119,7 +119,12 @@ Use both approaches together:
 ### Default Behavior
 
 > [!NOTE]
-> **Default Configuration**  
+> **Default Configuration**
 > If neither `--category` nor `--tools` arguments are provided, **all categories are enabled by default**. This gives you access to the complete Twenty API but will impact performance and costs due to the large number of available tools.
+
+> [!CAUTION]
+> **Development Version**  
+> This server is currently in development and is **not recommended for production use**. Use at your own risk in production environments.
+> This MCP server provides access to your Twenty CRM API using your api-key. It has **no built-in authorization, authentication, or access controls**.
 
 [![MCP Badge](https://lobehub.com/badge/mcp/jdu278-twenty-mcp-server)](https://lobehub.com/mcp/jdu278-twenty-mcp-server)
