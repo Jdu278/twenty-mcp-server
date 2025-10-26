@@ -2,8 +2,6 @@
 
 This document contains important observations and best practices for using the Twenty CRM MCP tools effectively.
 
-**Note:** These guidelines are based on my specific Twenty CRM instance and usage patterns. Your setup and requirements may differ, so feel free to adjust these practices for your use case.
-
 ## Notes
 
 ### Critical Workflow Requirements
@@ -44,7 +42,7 @@ When improving or formatting notes:
 
 **Example filter:**
 ```
-name.firstName[ilike]:Elizab
+name.firstName[ilike]:Anton
 ```
 
 ### Adding People
