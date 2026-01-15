@@ -38,7 +38,7 @@ npm run build
 |----------|-------------|
 | `TWENTY_BASE_URL` | Your Twenty API base URL (e.g., `https://your-instance.com/rest`) |
 | `TWENTY_API_KEY` | Your Twenty API key |
-| `TWENTY_ALLOWED_METHODS` | Allowed HTTP methods (default: `GET`). Set to `GET,POST,PUT,DELETE` for full access |
+| `TWENTY_ALLOWED_METHODS` | Allowed HTTP methods (default: `GET`). Set to `GET,POST,PATCH,DELETE` for full access |
 
 ### MCP Client Configuration
 
@@ -53,7 +53,7 @@ Example for Claude Desktop:
       "env": {
         "TWENTY_BASE_URL": "https://your-twenty-instance.com/rest",
         "TWENTY_API_KEY": "your-api-key",
-        "TWENTY_ALLOWED_METHODS": "GET,POST"
+        "TWENTY_ALLOWED_METHODS": "GET,POST,PATCH"
       }
     }
   }
