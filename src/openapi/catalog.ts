@@ -14,9 +14,11 @@ export interface CatalogEntry {
 
 export class ToolCatalog {
   private tools = new Map<string, CatalogEntry>();
+  private allowedMethods: string[] = [];
 
-  loadFromOpenApi(spec: OpenAPISpec): void {
+  loadFromOpenApi(spec: OpenAPISpec, allowedMethods: string[] = ['GET']): void {
     this.tools.clear();
+    this.allowedMethods = allowedMethods.map(m => m.toLowerCase());
     const globalSecurity = spec.security || [];
 
     for (const [path, pathItem] of Object.entries(spec.paths)) {
@@ -25,6 +27,9 @@ export class ToolCatalog {
       // Process each HTTP method
       for (const [method, operation] of Object.entries(pathItem)) {
         if (!operation || method === 'parameters') continue;
+
+        // Skip methods that are not allowed
+        if (!this.allowedMethods.includes(method.toLowerCase())) continue;
 
         const op = operation as Operation;
         const opParams = (op.parameters || []).map(p => this.resolveParameter(p, spec.components));
@@ -46,7 +51,7 @@ export class ToolCatalog {
       }
     }
 
-    console.error(`Loaded ${this.tools.size} tools from OpenAPI spec`);
+    console.error(`Loaded ${this.tools.size} tools (allowed methods: ${this.allowedMethods.join(', ').toUpperCase()})`);
   }
 
   private buildInputSchema(

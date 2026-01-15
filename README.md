@@ -7,27 +7,22 @@ An MCP server for integrating with [Twenty CRM](https://github.com/twentyhq/twen
 - **Dynamic API Discovery**: Fetches the OpenAPI spec from your Twenty instance at startup, so the server always reflects your current data model (including custom objects)
 - **System Prompt Integration**: All available operations are listed in the system instructions, so the AI knows exactly what's available
 - **Two-Step Execution**: AI gets tool spec first, then executes - ensuring correct parameter usage
-- **Minimal Context Usage**: Only 2 tools exposed, with operation details fetched on-demand
+- **Safe by Default**: Only GET operations enabled by default, write operations must be explicitly allowed
 
 ## How It Works
 
 The server:
 1. **Fetches OpenAPI spec** from your Twenty instance at startup
-2. **Generates a tool listing** that gets included in the system instructions
-3. **Exposes 2 tools**:
+2. **Exposes 3 tools**:
+   - `listTwentyOperations` - List all available API operations (call first!)
    - `getTwentyToolSpec` - Get full parameter specification for a tool
    - `executeTwentyApiCall` - Execute the tool with parameters
-
-When the AI needs to interact with Twenty:
-1. It sees all available operations in the system instructions
-2. Calls `getTwentyToolSpec` to get the parameter schema
-3. Calls `executeTwentyApiCall` with the correct parameters
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/twenty-mcp-server.git
+git clone https://github.com/Jdu278/twenty-mcp-server.git
 cd twenty-mcp-server
 
 # Install dependencies
@@ -39,12 +34,11 @@ npm run build
 
 ## Configuration
 
-The server requires two environment variables:
-
 | Variable | Description |
 |----------|-------------|
 | `TWENTY_BASE_URL` | Your Twenty API base URL (e.g., `https://your-instance.com/rest`) |
 | `TWENTY_API_KEY` | Your Twenty API key |
+| `TWENTY_ALLOWED_METHODS` | Allowed HTTP methods (default: `GET`). Set to `GET,POST,PUT,DELETE` for full access |
 
 ### MCP Client Configuration
 
@@ -58,7 +52,8 @@ Example for Claude Desktop:
       "args": ["/path/to/twenty-mcp-server/build/index.js"],
       "env": {
         "TWENTY_BASE_URL": "https://your-twenty-instance.com/rest",
-        "TWENTY_API_KEY": "your-api-key"
+        "TWENTY_API_KEY": "your-api-key",
+        "TWENTY_ALLOWED_METHODS": "GET,POST"
       }
     }
   }
@@ -102,39 +97,17 @@ Example for Claude Desktop:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MCP Server                                │
 │                                                                  │
-│  System Instructions contain:                                    │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ - findManyCompanies: List companies                      │    │
-│  │ - createOneCompany: Create a company                     │    │
-│  │ - findManyPeople: List people                            │    │
-│  │ - ... (200+ operations)                                  │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
 │  Tools:                                                          │
-│  ┌──────────────────┐    ┌─────────────────────────────────┐   │
-│  │getTwentyToolSpec │───▶│  Returns full inputSchema for   │   │
-│  └──────────────────┘    │  the specified tool              │   │
-│                          └─────────────────────────────────┘   │
-│  ┌──────────────────┐                                           │
-│  │executeTwentyApiCall│──▶ Twenty REST API                     │
-│  └──────────────────┘                                           │
+│  ┌────────────────────────┐                                      │
+│  │ listTwentyOperations   │──▶ Returns all available operations │
+│  ├────────────────────────┤                                      │
+│  │ getTwentyToolSpec      │──▶ Returns inputSchema for a tool   │
+│  ├────────────────────────┤                                      │
+│  │ executeTwentyApiCall   │──▶ Twenty REST API                  │
+│  └────────────────────────┘                                      │
+│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-## Available Operations
-
-The server dynamically loads all operations from your Twenty instance. Common operations include:
-
-| Resource | Operations |
-|----------|------------|
-| Companies | findMany, createOne, findOne, updateOne, deleteOne, findDuplicates |
-| People | findMany, createOne, findOne, updateOne, deleteOne, findDuplicates |
-| Opportunities | findMany, createOne, findOne, updateOne, deleteOne |
-| Tasks | findMany, createOne, findOne, updateOne, deleteOne |
-| Notes | findMany, createOne, findOne, updateOne, deleteOne |
-| And more... | Workflows, Views, Messages, Calendar, Attachments, etc. |
-
-> **Note**: Custom objects you've created in Twenty will also appear in the tool listing.
 
 ## Customizing Instructions
 

@@ -32,9 +32,25 @@ import { getInstructionsContent } from './instructions/instructions.js';
  * Server configuration
  */
 export const SERVER_NAME = "twenty-mcp-server";
-export const SERVER_VERSION = "v0.3";
+export const SERVER_VERSION = "0.3.0";
 export const TWENTY_BASE_URL = process.env['TWENTY_BASE_URL'];
 export const TWENTY_API_KEY = process.env['TWENTY_API_KEY'];
+
+/**
+ * Allowed HTTP methods (default: GET only for safety)
+ * Set TWENTY_ALLOWED_METHODS=GET,POST,PUT,DELETE to enable more
+ */
+const VALID_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+export const TWENTY_ALLOWED_METHODS = (process.env['TWENTY_ALLOWED_METHODS'] || 'GET')
+  .toUpperCase()
+  .split(',')
+  .map(m => {
+    const method = m.trim();
+    if (!VALID_METHODS.includes(method)) {
+      throw new Error(`Invalid HTTP method in TWENTY_ALLOWED_METHODS: "${method}". Valid: ${VALID_METHODS.join(', ')}`);
+    }
+    return method;
+  });
 
 /**
  * Tool catalog - populated at startup
@@ -343,9 +359,9 @@ async function main() {
     console.error("Initializing Twenty MCP Server...");
     const openApiSpec = await fetchOpenApiSpec(TWENTY_BASE_URL, TWENTY_API_KEY);
 
-    // Initialize the tool catalog
+    // Initialize the tool catalog with allowed methods
     toolCatalog = new ToolCatalog();
-    toolCatalog.loadFromOpenApi(openApiSpec);
+    toolCatalog.loadFromOpenApi(openApiSpec, TWENTY_ALLOWED_METHODS);
 
     console.error(`Tool catalog ready: ${toolCatalog.size} operations available`);
 

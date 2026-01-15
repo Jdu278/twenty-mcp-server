@@ -1,14 +1,22 @@
 {
   "name": "twenty-mcp-server",
-  "version": "v0.3",
+  "version": "0.3.0",
   "description": "MCP Server for Twenty CRM with dynamic tool discovery",
-  "private": true,
   "type": "module",
   "main": "build/index.js",
+  "bin": {
+    "twenty-mcp-server": "build/index.js"
+  },
   "files": [
-    "build",
-    "src"
+    "build"
   ],
+  "keywords": ["mcp", "twenty", "crm", "ai", "claude", "anthropic"],
+  "author": "Tim Schauder",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jdu278/twenty-mcp-server"
+  },
   "scripts": {
     "start": "node build/index.js",
     "build": "tsc && chmod 755 build/index.js && cp -r src/instructions build/",
