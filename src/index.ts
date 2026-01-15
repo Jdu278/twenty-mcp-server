@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * MCP Server generated from OpenAPI spec for twenty-mcp-server vv0.1
- * Generated on: 2025-08-07T08:25:00.671Z
+ * Twenty MCP Server with Dynamic Tool Discovery
+ *
+ * This server:
+ * 1. Fetches the OpenAPI spec from Twenty at startup
+ * 2. Lists all available operations in the system instructions
+ * 3. Exposes 2 tools: getTwentyToolSpec and executeTwentyApiCall
  */
 
 // Load environment variables from .env file
@@ -21,199 +25,204 @@ import {
 import { z, ZodError } from 'zod';
 import { jsonSchemaToZod } from 'json-schema-to-zod';
 import axios, { type AxiosRequestConfig, type AxiosError } from 'axios';
-import {
-  buildToolDefinitionMap,
-  parseArgs
-} from './tools/index.js';
-import { TOOL_CATEGORIES } from "./types/ToolCategories.js"
-import { McpToolDefinition } from './types/McpToolDefinition.js';
-import { JsonObject } from './types/JsonObject.js';
-import { securitySchemes } from './types/SecuritySchemes.js';
+import { fetchOpenApiSpec, ToolCatalog, type CatalogEntry } from './openapi/index.js';
 import { getInstructionsContent } from './instructions/instructions.js';
-import { instructionsTool, handleInstructionsTool } from './instructions/instructionsTool.js';
 
 /**
  * Server configuration
  */
 export const SERVER_NAME = "twenty-mcp-server";
-export const SERVER_VERSION = "v0.1";
+export const SERVER_VERSION = "v0.3";
 export const TWENTY_BASE_URL = process.env['TWENTY_BASE_URL'];
-
-// Parse arguments and build tool definition map
-const { enabledCategories, specificTools } = parseArgs();
-const toolDefinitionMap = buildToolDefinitionMap(enabledCategories, specificTools);
+export const TWENTY_API_KEY = process.env['TWENTY_API_KEY'];
 
 /**
- * MCP Server instance
+ * Tool catalog - populated at startup
  */
-const server = new Server(
-    { name: SERVER_NAME, version: SERVER_VERSION },
-    {
-        capabilities: {
-            tools: {}
-        },
-        instructions: getInstructionsContent()
-    }
-);
-
-
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  // Add the instructions tool as the first tool
-  const toolsForClient: Tool[] = [
-    instructionsTool,
-    ...Array.from(toolDefinitionMap.values()).map((def) => ({
-      name: (def as McpToolDefinition).name,
-      description: (def as McpToolDefinition).description,
-      inputSchema: (def as McpToolDefinition).inputSchema
-    }))
-  ];
-  return { tools: toolsForClient };
-});
-
-
-server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest): Promise<CallToolResult> => {
-  const { name: toolName, arguments: toolArgs } = request.params;
-
-  // Handle the instructions tool
-  if (toolName === instructionsTool.name) {
-    return handleInstructionsTool();
-  }
-
-  const toolDefinition = toolDefinitionMap.get(toolName);
-  if (!toolDefinition) {
-    console.error(`Error: Unknown tool requested: ${toolName}`);
-    return { content: [{ type: "text", text: `Error: Unknown tool requested: ${toolName}` }] };
-  }
-
-  return await executeApiTool(toolName, toolDefinition, toolArgs ?? {}, securitySchemes);
-});
-
-
+let toolCatalog: ToolCatalog;
 
 /**
- * Acquires an OAuth2 token using client credentials flow
- * 
- * @param schemeName Name of the security scheme
- * @param scheme OAuth2 security scheme
- * @returns Acquired token or null if unable to acquire
+ * Tool definitions for the two meta-tools
  */
-async function acquireOAuth2Token(schemeName: string, scheme: any): Promise<string | null | undefined> {
-    try {
-        // Check if we have the necessary credentials
-        const clientId = process.env[`OAUTH_CLIENT_ID_SCHEMENAME`];
-        const clientSecret = process.env[`OAUTH_CLIENT_SECRET_SCHEMENAME`];
-        const scopes = process.env[`OAUTH_SCOPES_SCHEMENAME`];
-        
-        if (!clientId || !clientSecret) {
-            console.error(`Missing client credentials for OAuth2 scheme '${schemeName}'`);
-            return null;
-        }
-        
-        // Initialize token cache if needed
-        if (typeof global.__oauthTokenCache === 'undefined') {
-            global.__oauthTokenCache = {};
-        }
-        
-        // Check if we have a cached token
-        const cacheKey = `${schemeName}_${clientId}`;
-        const cachedToken = global.__oauthTokenCache[cacheKey];
-        const now = Date.now();
-        
-        if (cachedToken && cachedToken.expiresAt > now) {
-            console.error(`Using cached OAuth2 token for '${schemeName}' (expires in ${Math.floor((cachedToken.expiresAt - now) / 1000)} seconds)`);
-            return cachedToken.token;
-        }
-        
-        // Determine token URL based on flow type
-        let tokenUrl = '';
-        if (scheme.flows?.clientCredentials?.tokenUrl) {
-            tokenUrl = scheme.flows.clientCredentials.tokenUrl;
-            console.error(`Using client credentials flow for '${schemeName}'`);
-        } else if (scheme.flows?.password?.tokenUrl) {
-            tokenUrl = scheme.flows.password.tokenUrl;
-            console.error(`Using password flow for '${schemeName}'`);
-        } else {
-            console.error(`No supported OAuth2 flow found for '${schemeName}'`);
-            return null;
-        }
-        
-        // Prepare the token request
-        let formData = new URLSearchParams();
-        formData.append('grant_type', 'client_credentials');
-        
-        // Add scopes if specified
-        if (scopes) {
-            formData.append('scope', scopes);
-        }
-        
-        console.error(`Requesting OAuth2 token from ${tokenUrl}`);
-        
-        // Make the token request
-        const response = await axios({
-            method: 'POST',
-            url: tokenUrl,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
-            },
-            data: formData.toString()
-        });
-        
-        // Process the response
-        if (response.data?.access_token) {
-            const token = response.data.access_token;
-            const expiresIn = response.data.expires_in || 3600; // Default to 1 hour
-            
-            // Cache the token
-            global.__oauthTokenCache[cacheKey] = {
-                token,
-                expiresAt: now + (expiresIn * 1000) - 60000 // Expire 1 minute early
-            };
-            
-            console.error(`Successfully acquired OAuth2 token for '${schemeName}' (expires in ${expiresIn} seconds)`);
-            return token;
-        } else {
-            console.error(`Failed to acquire OAuth2 token for '${schemeName}': No access_token in response`);
-            return null;
-        }
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Error acquiring OAuth2 token for '${schemeName}':`, errorMessage);
-        return null;
-    }
+const getTwentyToolSpecDefinition: Tool = {
+  name: "getTwentyToolSpec",
+  description: `Get the full specification for a Twenty CRM API operation.
+
+Returns the complete input schema with all parameters, their types, and descriptions.
+Use this BEFORE calling executeTwentyApiCall to understand what parameters are needed.
+
+The list of available tools is in the system instructions above.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      toolName: {
+        type: "string",
+        description: "The exact tool name (e.g., 'findManyCompanies', 'createOnePerson'). See system instructions for available tools."
+      }
+    },
+    required: ["toolName"]
+  }
+};
+
+const executeTwentyApiCallDefinition: Tool = {
+  name: "executeTwentyApiCall",
+  description: `Execute a Twenty CRM API operation.
+
+IMPORTANT: Use getTwentyToolSpec FIRST to get the required parameters for the tool.
+
+The parameters object should match the inputSchema returned by getTwentyToolSpec.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      toolName: {
+        type: "string",
+        description: "The exact tool name (e.g., 'findManyCompanies', 'createOnePerson')"
+      },
+      parameters: {
+        type: "object",
+        description: "Parameters for the API call. Use getTwentyToolSpec to see required fields."
+      }
+    },
+    required: ["toolName"]
+  }
+};
+
+const listTwentyOperationsDefinition: Tool = {
+  name: "listTwentyOperations",
+  description: `**CALL THIS FIRST** - List all available Twenty CRM operations.
+
+Returns the names and descriptions of all available API operations.
+Call this before using getTwentyToolSpec or executeTwentyApiCall to know what operations exist.
+
+Examples: findOneCompany, findManyPeople, createOneNote, etc.`,
+  inputSchema: {
+    type: "object",
+    properties: {},
+    additionalProperties: false
+  }
+};
+
+/**
+ * Handle listTwentyOperations calls
+ */
+function handleListTwentyOperations(): CallToolResult {
+  const toolListing = toolCatalog.generateToolListing();
+  return {
+    content: [{
+      type: "text",
+      text: toolListing
+    }]
+  };
 }
 
+/**
+ * Handle getTwentyToolSpec calls
+ */
+function handleGetToolSpec(args: Record<string, unknown> | undefined): CallToolResult {
+  const toolName = args?.toolName;
+
+  if (!toolName || typeof toolName !== 'string') {
+    return {
+      content: [{
+        type: "text",
+        text: "Error: 'toolName' parameter is required and must be a string"
+      }]
+    };
+  }
+
+  const tool = toolCatalog.get(toolName);
+
+  if (!tool) {
+    // List some available tools as suggestions
+    const allTools = toolCatalog.getAllToolNames();
+    const suggestions = allTools
+      .filter(t => t.toLowerCase().includes(toolName.toLowerCase().replace(/\s+/g, '')))
+      .slice(0, 5);
+
+    const suggestionText = suggestions.length > 0
+      ? `\n\nDid you mean one of these?\n${suggestions.map(s => `  - ${s}`).join('\n')}`
+      : '\n\nCheck the system instructions for the list of available tools.';
+
+    return {
+      content: [{
+        type: "text",
+        text: `Error: Tool '${toolName}' not found.${suggestionText}`
+      }]
+    };
+  }
+
+  // Return the full tool specification
+  const spec = {
+    name: tool.name,
+    description: tool.description,
+    method: tool.method.toUpperCase(),
+    path: tool.pathTemplate,
+    inputSchema: tool.inputSchema
+  };
+
+  return {
+    content: [{
+      type: "text",
+      text: `Tool specification for "${toolName}":\n\n${JSON.stringify(spec, null, 2)}\n\nUse executeTwentyApiCall with this tool name and parameters matching the inputSchema.`
+    }]
+  };
+}
+
+/**
+ * Handle executeTwentyApiCall calls
+ */
+async function handleExecuteApiCall(args: Record<string, unknown> | undefined): Promise<CallToolResult> {
+  const toolName = args?.toolName;
+  const parameters = (args?.parameters as Record<string, unknown>) ?? {};
+
+  if (!toolName || typeof toolName !== 'string') {
+    return {
+      content: [{
+        type: "text",
+        text: "Error: 'toolName' parameter is required and must be a string"
+      }]
+    };
+  }
+
+  // Look up the tool in the catalog
+  const tool = toolCatalog.get(toolName);
+
+  if (!tool) {
+    return {
+      content: [{
+        type: "text",
+        text: `Error: Tool '${toolName}' not found. Check the system instructions for available tools, or use getTwentyToolSpec to verify the tool name.`
+      }]
+    };
+  }
+
+  // Execute the API call
+  return await executeApiTool(toolName, tool, parameters);
+}
 
 /**
  * Executes an API tool with the provided arguments
- * 
- * @param toolName Name of the tool to execute
- * @param definition Tool definition
- * @param toolArgs Arguments provided by the user
- * @param allSecuritySchemes Security schemes from the OpenAPI spec
- * @returns Call tool result
  */
 async function executeApiTool(
-    toolName: string,
-    definition: McpToolDefinition,
-    toolArgs: JsonObject,
-    allSecuritySchemes: Record<string, any>
+  toolName: string,
+  definition: CatalogEntry,
+  toolArgs: Record<string, any>
 ): Promise<CallToolResult> {
   try {
     // Validate arguments against the input schema
-    let validatedArgs: JsonObject;
+    let validatedArgs: Record<string, any>;
     try {
-        const zodSchema = getZodSchemaFromJsonSchema(definition.inputSchema, toolName);
-        const argsToParse = (typeof toolArgs === 'object' && toolArgs !== null) ? toolArgs : {};
-        validatedArgs = zodSchema.parse(argsToParse);
+      const zodSchema = getZodSchemaFromJsonSchema(definition.inputSchema, toolName);
+      const argsToParse = (typeof toolArgs === 'object' && toolArgs !== null) ? toolArgs : {};
+      validatedArgs = zodSchema.parse(argsToParse);
     } catch (error: unknown) {
-        if (error instanceof ZodError) {
-            const validationErrorMessage = `Invalid arguments for tool '${toolName}': ${error.errors.map(e => `${e.path.join('.')} (${e.code}): ${e.message}`).join(', ')}`;
-            return { content: [{ type: 'text', text: validationErrorMessage }] };
-        } else {
-             const errorMessage = error instanceof Error ? error.message : String(error);
-             return { content: [{ type: 'text', text: `Internal error during validation setup: ${errorMessage}` }] };
-        }
+      if (error instanceof ZodError) {
+        const validationErrorMessage = `Invalid arguments for tool '${toolName}': ${error.errors.map(e => `${e.path.join('.')} (${e.code}): ${e.message}`).join(', ')}`;
+        return { content: [{ type: 'text', text: validationErrorMessage }] };
+      } else {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { content: [{ type: 'text', text: `Internal error during validation setup: ${errorMessage}` }] };
+      }
     }
 
     // Prepare URL, query parameters, headers, and request body
@@ -224,278 +233,188 @@ async function executeApiTool(
 
     // Apply parameters to the URL path, query, or headers
     definition.executionParameters.forEach((param) => {
-        const value = validatedArgs[param.name];
-        if (typeof value !== 'undefined' && value !== null) {
-            if (param.in === 'path') {
-                urlPath = urlPath.replace(`{${param.name}}`, encodeURIComponent(String(value)));
-            }
-            else if (param.in === 'query') {
-                queryParams[param.name] = value;
-            }
-            else if (param.in === 'header') {
-                headers[param.name.toLowerCase()] = String(value);
-            }
+      const value = validatedArgs[param.name];
+      if (typeof value !== 'undefined' && value !== null) {
+        if (param.in === 'path') {
+          urlPath = urlPath.replace(`{${param.name}}`, encodeURIComponent(String(value)));
         }
+        else if (param.in === 'query') {
+          queryParams[param.name] = value;
+        }
+        else if (param.in === 'header') {
+          headers[param.name.toLowerCase()] = String(value);
+        }
+      }
     });
 
     // Ensure all path parameters are resolved
     if (urlPath.includes('{')) {
-        throw new Error(`Failed to resolve path parameters: ${urlPath}`);
+      throw new Error(`Failed to resolve path parameters: ${urlPath}`);
     }
-    
+
     // Construct the full URL
     const requestUrl = TWENTY_BASE_URL ? `${TWENTY_BASE_URL}${urlPath}` : urlPath;
 
     // Handle request body if needed
     if (definition.requestBodyContentType && typeof validatedArgs['requestBody'] !== 'undefined') {
-        requestBodyData = validatedArgs['requestBody'];
-        headers['content-type'] = definition.requestBodyContentType;
+      requestBodyData = validatedArgs['requestBody'];
+      headers['content-type'] = definition.requestBodyContentType;
     }
 
-
-    // Apply security requirements if available
-    // Security requirements use OR between array items and AND within each object
-    const appliedSecurity = definition.securityRequirements?.find(req => {
-        // Try each security requirement (combined with OR)
-        return Object.entries(req).every(([schemeName, scopesArray]) => {
-            const scheme = allSecuritySchemes[schemeName];
-            if (!scheme) return false;
-            
-            // API Key security (header, query, cookie)
-            if (scheme.type === 'apiKey') {
-                return !!process.env[`API_KEY_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-            }
-            
-            // HTTP security (basic, bearer)
-            if (scheme.type === 'http') {
-                if (scheme.scheme?.toLowerCase() === 'bearer') {
-                    return !!process.env['TWENTY_API_KEY'];
-                }
-                else if (scheme.scheme?.toLowerCase() === 'basic') {
-                    return !!process.env[`BASIC_USERNAME_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`] && 
-                           !!process.env[`BASIC_PASSWORD_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                }
-            }
-            
-            // OAuth2 security
-            if (scheme.type === 'oauth2') {
-                // Check for pre-existing token
-                if (process.env[`OAUTH_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`]) {
-                    return true;
-                }
-                
-                // Check for client credentials for auto-acquisition
-                if (process.env[`OAUTH_CLIENT_ID_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`] &&
-                    process.env[`OAUTH_CLIENT_SECRET_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`]) {
-                    // Verify we have a supported flow
-                    if (scheme.flows?.clientCredentials || scheme.flows?.password) {
-                        return true;
-                    }
-                }
-                
-                return false;
-            }
-            
-            // OpenID Connect
-            if (scheme.type === 'openIdConnect') {
-                return !!process.env[`OPENID_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-            }
-            
-            return false;
-        });
-    });
-
-    // If we found matching security scheme(s), apply them
-    if (appliedSecurity) {
-        // Apply each security scheme from this requirement (combined with AND)
-        for (const [schemeName, scopesArray] of Object.entries(appliedSecurity)) {
-            const scheme = allSecuritySchemes[schemeName];
-            
-            // API Key security
-            if (scheme?.type === 'apiKey') {
-                const apiKey = process.env[`API_KEY_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                if (apiKey) {
-                    if (scheme.in === 'header') {
-                        headers[scheme.name.toLowerCase()] = apiKey;
-                        console.error(`Applied API key '${schemeName}' in header '${scheme.name}'`);
-                    }
-                    else if (scheme.in === 'query') {
-                        queryParams[scheme.name] = apiKey;
-                        console.error(`Applied API key '${schemeName}' in query parameter '${scheme.name}'`);
-                    }
-                    else if (scheme.in === 'cookie') {
-                        // Add the cookie, preserving other cookies if they exist
-                        headers['cookie'] = `${scheme.name}=${apiKey}${headers['cookie'] ? `; ${headers['cookie']}` : ''}`;
-                        console.error(`Applied API key '${schemeName}' in cookie '${scheme.name}'`);
-                    }
-                }
-            } 
-            // HTTP security (Bearer or Basic)
-            else if (scheme?.type === 'http') {
-                if (scheme.scheme?.toLowerCase() === 'bearer') {
-                    const token = process.env['TWENTY_API_KEY'];
-                    if (token) {
-                        headers['authorization'] = `Bearer ${token}`;
-                        console.error(`Applied Bearer token for '${schemeName}'`);
-                    }
-                } 
-                else if (scheme.scheme?.toLowerCase() === 'basic') {
-                    const username = process.env[`BASIC_USERNAME_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                    const password = process.env[`BASIC_PASSWORD_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                    if (username && password) {
-                        headers['authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-                        console.error(`Applied Basic authentication for '${schemeName}'`);
-                    }
-                }
-            }
-            // OAuth2 security
-            else if (scheme?.type === 'oauth2') {
-                // First try to use a pre-provided token
-                let token = process.env[`OAUTH_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                
-                // If no token but we have client credentials, try to acquire a token
-                if (!token && (scheme.flows?.clientCredentials || scheme.flows?.password)) {
-                    console.error(`Attempting to acquire OAuth token for '${schemeName}'`);
-                    token = (await acquireOAuth2Token(schemeName, scheme)) ?? '';
-                }
-                
-                // Apply token if available
-                if (token) {
-                    headers['authorization'] = `Bearer ${token}`;
-                    console.error(`Applied OAuth2 token for '${schemeName}'`);
-                    
-                    // List the scopes that were requested, if any
-                    const scopes = scopesArray as string[];
-                    if (scopes && scopes.length > 0) {
-                        console.error(`Requested scopes: ${scopes.join(', ')}`);
-                    }
-                }
-            }
-            // OpenID Connect
-            else if (scheme?.type === 'openIdConnect') {
-                const token = process.env[`OPENID_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];
-                if (token) {
-                    headers['authorization'] = `Bearer ${token}`;
-                    console.error(`Applied OpenID Connect token for '${schemeName}'`);
-                    
-                    // List the scopes that were requested, if any
-                    const scopes = scopesArray as string[];
-                    if (scopes && scopes.length > 0) {
-                        console.error(`Requested scopes: ${scopes.join(', ')}`);
-                    }
-                }
-            }
-        }
-    } 
-    // Log warning if security is required but not available
-    else if (definition.securityRequirements?.length > 0) {
-        // First generate a more readable representation of the security requirements
-        const securityRequirementsString = definition.securityRequirements
-            .map(req => {
-                const parts = Object.entries(req)
-                    .map(([name, scopesArray]) => {
-                        const scopes = scopesArray as string[];
-                        if (scopes.length === 0) return name;
-                        return `${name} (scopes: ${scopes.join(', ')})`;
-                    })
-                    .join(' AND ');
-                return `[${parts}]`;
-            })
-            .join(' OR ');
-            
-        console.warn(`Tool '${toolName}' requires security: ${securityRequirementsString}, but no suitable credentials found.`);
+    // Apply security (Bearer token)
+    if (TWENTY_API_KEY) {
+      headers['authorization'] = `Bearer ${TWENTY_API_KEY}`;
+    } else {
+      console.warn(`Warning: No TWENTY_API_KEY set, API calls may fail`);
     }
-    
 
     // Prepare the axios request configuration
     const config: AxiosRequestConfig = {
-      method: definition.method.toUpperCase(), 
-      url: requestUrl, 
-      params: queryParams, 
+      method: definition.method.toUpperCase(),
+      url: requestUrl,
+      params: queryParams,
       headers: headers,
       ...(requestBodyData !== undefined && { data: requestBodyData }),
     };
 
     // Log request info to stderr (doesn't affect MCP output)
     console.error(`Executing tool "${toolName}": ${config.method} ${config.url}`);
-    
+
     // Execute the request
     const response = await axios(config);
 
-    // Process and format the response
-    let responseText = '';
-    const contentType = response.headers['content-type']?.toLowerCase() || '';
-    
-    // Handle JSON responses
-    if (contentType.includes('application/json') && typeof response.data === 'object' && response.data !== null) {
-         try { 
-             responseText = JSON.stringify(response.data, null, 2); 
-         } catch (e) { 
-             responseText = "[Stringify Error]"; 
-         }
-    } 
-    // Handle string responses
-    else if (typeof response.data === 'string') { 
-         responseText = response.data; 
-    }
-    // Handle other response types
-    else if (response.data !== undefined && response.data !== null) { 
-         responseText = String(response.data); 
-    }
-    // Handle empty responses
-    else { 
-         responseText = `(Status: ${response.status} - No body content)`; 
-    }
-    
+    // Format response based on content type and data
+    const responseText = formatResponseText(response.data, response.status);
+
     // Return formatted response
-    return { 
-        content: [ 
-            { 
-                type: "text", 
-                text: `API Response (Status: ${response.status}):\n${responseText}` 
-            } 
-        ], 
+    return {
+      content: [
+        {
+          type: "text",
+          text: `API Response (Status: ${response.status}):\n${responseText}`
+        }
+      ],
     };
 
   } catch (error: unknown) {
     // Handle errors during execution
     let errorMessage: string;
-    
+
     // Format Axios errors specially
-    if (axios.isAxiosError(error)) { 
-        errorMessage = formatApiError(error); 
+    if (axios.isAxiosError(error)) {
+      errorMessage = formatApiError(error);
     }
     // Handle standard errors
-    else if (error instanceof Error) { 
-        errorMessage = error.message; 
+    else if (error instanceof Error) {
+      errorMessage = error.message;
     }
     // Handle unexpected error types
-    else { 
-        errorMessage = 'Unexpected error: ' + String(error); 
+    else {
+      errorMessage = 'Unexpected error: ' + String(error);
     }
-    
+
     // Log error to stderr
     console.error(`Error during execution of tool '${toolName}':`, errorMessage);
-    
+
     // Return error message to client
     return { content: [{ type: "text", text: errorMessage }] };
   }
 }
 
-
 /**
  * Main function to start the server
  */
 async function main() {
-// Set up stdio transport
+  // Validate required environment variables
+  if (!TWENTY_BASE_URL) {
+    console.error("Error: TWENTY_BASE_URL environment variable is required");
+    console.error("Set it to your Twenty API base URL, e.g., https://your-instance.com/rest");
+    process.exit(1);
+  }
+
+  if (!TWENTY_API_KEY) {
+    console.error("Error: TWENTY_API_KEY environment variable is required");
+    console.error("Get an API key from your Twenty settings");
+    process.exit(1);
+  }
+
   try {
+    // Fetch and load the OpenAPI spec
+    console.error("Initializing Twenty MCP Server...");
+    const openApiSpec = await fetchOpenApiSpec(TWENTY_BASE_URL, TWENTY_API_KEY);
+
+    // Initialize the tool catalog
+    toolCatalog = new ToolCatalog();
+    toolCatalog.loadFromOpenApi(openApiSpec);
+
+    console.error(`Tool catalog ready: ${toolCatalog.size} operations available`);
+
+    // Build the dynamic instructions with tool listing
+    const baseInstructions = getInstructionsContent();
+    const toolListing = toolCatalog.generateToolListing();
+    const fullInstructions = `${baseInstructions}\n\n${toolListing}`;
+
+    // Create the MCP server with dynamic instructions
+    const server = new Server(
+      { name: SERVER_NAME, version: SERVER_VERSION },
+      {
+        capabilities: {
+          tools: {}
+        },
+        instructions: fullInstructions
+      }
+    );
+
+    // Register tool list handler
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
+      return {
+        tools: [
+          listTwentyOperationsDefinition,
+          getTwentyToolSpecDefinition,
+          executeTwentyApiCallDefinition
+        ]
+      };
+    });
+
+    // Register tool call handler
+    server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest): Promise<CallToolResult> => {
+      const { name: toolName, arguments: toolArgs } = request.params;
+
+      // Handle listTwentyOperations
+      if (toolName === "listTwentyOperations") {
+        return handleListTwentyOperations();
+      }
+
+      // Handle getTwentyToolSpec
+      if (toolName === "getTwentyToolSpec") {
+        return handleGetToolSpec(toolArgs);
+      }
+
+      // Handle executeTwentyApiCall
+      if (toolName === "executeTwentyApiCall") {
+        return handleExecuteApiCall(toolArgs);
+      }
+
+      // Unknown tool
+      console.error(`Error: Unknown tool requested: ${toolName}`);
+      return {
+        content: [{
+          type: "text",
+          text: `Error: Unknown tool '${toolName}'. Available tools: listTwentyOperations, getTwentyToolSpec, executeTwentyApiCall`
+        }]
+      };
+    });
+
+    // Set up stdio transport and connect
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    const enabledCategoryNames = Array.from(enabledCategories).map(cat => TOOL_CATEGORIES[cat]).join(', ');
-    console.error(`${SERVER_NAME} MCP Server (v${SERVER_VERSION}) running on stdio${TWENTY_BASE_URL ? `, proxying API at ${TWENTY_BASE_URL}` : ''}`);
-    console.error(`Enabled categories: ${enabledCategoryNames}`);
+
+    console.error(`${SERVER_NAME} (${SERVER_VERSION}) running on stdio`);
+    console.error(`API: ${TWENTY_BASE_URL}`);
+    console.error(`Tools exposed: listTwentyOperations, getTwentyToolSpec, executeTwentyApiCall`);
+
   } catch (error) {
-    console.error("Error during server startup:", error);
+    console.error("Error during server startup:", error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }
@@ -504,8 +423,8 @@ async function main() {
  * Cleanup function for graceful shutdown
  */
 async function cleanup() {
-    console.error("Shutting down MCP server...");
-    process.exit(0);
+  console.error("Shutting down MCP server...");
+  process.exit(0);
 }
 
 // Register signal handlers
@@ -520,59 +439,78 @@ main().catch((error) => {
 
 /**
  * Formats API errors for better readability
- * 
- * @param error Axios error
- * @returns Formatted error message
  */
 function formatApiError(error: AxiosError): string {
-    let message = 'API request failed.';
-    if (error.response) {
-        message = `API Error: Status ${error.response.status} (${error.response.statusText || 'Status text not available'}). `;
-        const responseData = error.response.data;
-        const MAX_LEN = 200;
-        if (typeof responseData === 'string') { 
-            message += `Response: ${responseData.substring(0, MAX_LEN)}${responseData.length > MAX_LEN ? '...' : ''}`; 
-        }
-        else if (responseData) { 
-            try { 
-                const jsonString = JSON.stringify(responseData); 
-                message += `Response: ${jsonString.substring(0, MAX_LEN)}${jsonString.length > MAX_LEN ? '...' : ''}`; 
-            } catch { 
-                message += 'Response: [Could not serialize data]'; 
-            } 
-        }
-        else { 
-            message += 'No response body received.'; 
-        }
-    } else if (error.request) {
-        message = 'API Network Error: No response received from server.';
-        if (error.code) message += ` (Code: ${error.code})`;
-    } else { 
-        message += `API Request Setup Error: ${error.message}`; 
+  let message = 'API request failed.';
+  if (error.response) {
+    message = `API Error: Status ${error.response.status} (${error.response.statusText || 'Status text not available'}). `;
+    const responseData = error.response.data;
+    const MAX_LEN = 500;
+    if (typeof responseData === 'string') {
+      message += `Response: ${responseData.substring(0, MAX_LEN)}${responseData.length > MAX_LEN ? '...' : ''}`;
     }
-    return message;
+    else if (responseData) {
+      try {
+        const jsonString = JSON.stringify(responseData);
+        message += `Response: ${jsonString.substring(0, MAX_LEN)}${jsonString.length > MAX_LEN ? '...' : ''}`;
+      } catch {
+        message += 'Response: [Could not serialize data]';
+      }
+    }
+    else {
+      message += 'No response body received.';
+    }
+  } else if (error.request) {
+    message = 'API Network Error: No response received from server.';
+    if (error.code) message += ` (Code: ${error.code})`;
+  } else {
+    message += `API Request Setup Error: ${error.message}`;
+  }
+  return message;
+}
+
+/**
+ * Formats API response data into a readable string
+ */
+function formatResponseText(data: unknown, status: number): string {
+  if (data === undefined || data === null) {
+    return `(Status: ${status} - No body content)`;
+  }
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (typeof data === 'object') {
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return '[Stringify Error]';
+    }
+  }
+
+  return String(data);
 }
 
 /**
  * Converts a JSON Schema to a Zod schema for runtime validation
- * 
- * @param jsonSchema JSON Schema
- * @param toolName Tool name for error reporting
- * @returns Zod schema
  */
-function getZodSchemaFromJsonSchema(jsonSchema: any, toolName: string): z.ZodTypeAny {
-    if (typeof jsonSchema !== 'object' || jsonSchema === null) { 
-        return z.object({}).passthrough(); 
+function getZodSchemaFromJsonSchema(jsonSchema: unknown, toolName: string): z.ZodTypeAny {
+  if (typeof jsonSchema !== 'object' || jsonSchema === null) {
+    return z.object({}).passthrough();
+  }
+
+  try {
+    const zodSchemaString = jsonSchemaToZod(jsonSchema);
+    const zodSchema = eval(zodSchemaString);
+
+    if (typeof zodSchema?.parse !== 'function') {
+      throw new Error('Eval did not produce a valid Zod schema.');
     }
-    try {
-        const zodSchemaString = jsonSchemaToZod(jsonSchema);
-        const zodSchema = eval(zodSchemaString);
-        if (typeof zodSchema?.parse !== 'function') { 
-            throw new Error('Eval did not produce a valid Zod schema.'); 
-        }
-        return zodSchema as z.ZodTypeAny;
-    } catch (err: any) {
-        console.error(`Failed to generate/evaluate Zod schema for '${toolName}':`, err);
-        return z.object({}).passthrough();
-    }
+
+    return zodSchema as z.ZodTypeAny;
+  } catch (error) {
+    console.error(`Failed to generate/evaluate Zod schema for '${toolName}':`, error);
+    return z.object({}).passthrough();
+  }
 }

@@ -1,64 +1,105 @@
-# Twenty CRM MCP Server - Best Practices & Usage Guidelines
+# Twenty CRM MCP Server - Usage Guide
 
-This document contains important observations and best practices for using the Twenty CRM MCP tools effectively.
+## How to Use This Server
 
-## Notes
+This server provides access to Twenty CRM through two tools:
 
-### Critical Workflow Requirements
+### 1. getTwentyToolSpec
+Get the full parameter specification for any operation before executing it.
 
-**After creating notes, ALWAYS link them to entities:**
-- When you create a note using `createOneNote`, you **MUST** immediately follow up with `createOneNoteTarget` or `createManyNoteTargets`
-- This links the note to the relevant person, company, or opportunity
-- Without this step, notes will exist but won't be associated with any contacts or companies
+**Always call this first** to understand what parameters are required.
 
-### Note Title Format
-
-**Standard format:** `Meeting FirstName LastName Date`
-
-**Examples:**
-- `Meeting Antonia Muttis 22.09.25`
-- `Meeting John Smith 15.03.25`
-
-If the required information (name, date) is not provided:
-- Try to infer from context
-- If unable to determine, ask the user
-
-### Note Formatting Guidelines
-
-When improving or formatting notes:
-- **Stay close to the original structure** - don't reorganize unless necessary
-- **Don't add information** that wasn't in the original note
-- **Don't add emojis** to notes
-- Preserve the user's writing style and intent
-
-## People
-
-### Searching for People
-
-**Use fuzzy/approximate search:**
-- Users often make typos in people's names
-- Use the `ilike` comparator for flexible name matching
-- Consider partial matches when searching
-
-**Example filter:**
 ```
-name.firstName[ilike]:Anton
+getTwentyToolSpec({ toolName: "createOneCompany" })
 ```
 
-### Adding People
+Returns the complete input schema with all parameters, types, and descriptions.
 
-**Profile Pictures (avatarUrl):**
-- When creating a person, consider adding a profile picture via the `avatarUrl` parameter
-- Search online for an appropriate image
-- **IMPORTANT:** Always ask the user for permission before using an image
-- Only add if you find a suitable professional photo
+### 2. executeTwentyApiCall
+Execute an operation with the parameters from getTwentyToolSpec.
 
-**Workflow:**
-1. Search for person's profile picture (LinkedIn, company website, etc.)
-2. Ask user: "I found a profile picture for [Name] at [URL]. Would you like me to use this?"
-3. Only add `avatarUrl` if user approves
+```
+executeTwentyApiCall({
+  toolName: "createOneCompany",
+  parameters: {
+    requestBody: {
+      name: "Acme Corp"
+    }
+  }
+})
+```
+
+### Workflow Example
+
+To create a company:
+1. Call `getTwentyToolSpec({ toolName: "createOneCompany" })` - see required parameters
+2. Call `executeTwentyApiCall({ toolName: "createOneCompany", parameters: { requestBody: { name: "..." } } })`
 
 ---
 
-*Last updated: 2025-10-21*
-*These guidelines are based on real-world usage and testing of this Twenty CRM instance.*
+## Best Practices
+
+### Notes
+
+**Critical: Always link notes to entities!**
+- After creating a note with `createOneNote`, you **MUST** link it using `createOneNoteTarget`
+- Without this step, notes won't be associated with any person/company/opportunity
+
+**Workflow for notes:**
+1. `getTwentyToolSpec({ toolName: "createOneNote" })`
+2. `executeTwentyApiCall({ toolName: "createOneNote", parameters: { requestBody: { title: "...", body: "..." } } })`
+3. Get the note ID from the response
+4. `getTwentyToolSpec({ toolName: "createOneNoteTarget" })`
+5. `executeTwentyApiCall({ toolName: "createOneNoteTarget", parameters: { requestBody: { noteId: "...", personId: "..." } } })`
+
+**Note title format:** `Meeting FirstName LastName Date`
+- Example: `Meeting Antonia Muttis 22.09.25`
+
+**Note formatting:**
+- Stay close to original structure
+- Don't add information not in the original
+- Don't add emojis
+- Preserve user's writing style
+
+### People
+
+**Searching:** Use `ilike` for fuzzy name matching (handles typos):
+```
+executeTwentyApiCall({
+  toolName: "findManyPeople",
+  parameters: {
+    filter: "name.firstName[ilike]:Anton"
+  }
+})
+```
+
+**Profile pictures:** When adding people, ask user permission before using any avatarUrl.
+
+### Getting Records by ID
+
+When you have an entity ID (e.g., a person's `companyId`), use `findOne*` operations:
+
+```
+executeTwentyApiCall({
+  toolName: "findOneCompany",
+  parameters: { id: "uuid-here" }
+})
+```
+
+Don't iterate through all records with `findMany*` when you have the ID!
+
+### Common Parameters
+
+Most list operations (`findMany*`) support:
+- `filter` - Filter results (e.g., `name[ilike]:John`)
+- `order_by` - Sort results
+- `limit` - Max results (default 60)
+- `depth` - Include related objects (0, 1, or 2)
+
+Most single-item operations require:
+- `id` - UUID of the record
+- `requestBody` - Data to create/update
+
+---
+
+*These guidelines are based on real-world usage of this Twenty CRM instance.*

@@ -1,7 +1,7 @@
 {
   "name": "twenty-mcp-server",
-  "version": "v0.1",
-  "description": "MCP Server generated from OpenAPI spec for twenty-mcp-server",
+  "version": "v0.3",
+  "description": "MCP Server for Twenty CRM with dynamic tool discovery",
   "private": true,
   "type": "module",
   "main": "build/index.js",
