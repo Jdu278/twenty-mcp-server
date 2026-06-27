@@ -6,6 +6,7 @@
     "allowJs": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
+    "isolatedModules": true,
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
