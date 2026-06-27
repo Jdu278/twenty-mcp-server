@@ -249,7 +249,7 @@ function registerInstructionsTool(server: McpServer) {
       description: instructionsTool.description,
       annotations: READ_ONLY_ANNOTATIONS
     },
-    async () => handleInstructionsTool()
+    async () => handleInstructionsTool(TWENTY_TOOL_DISCOVERY)
   );
 }
 
@@ -399,7 +399,7 @@ async function main() {
     console.error(`Tool catalog ready: ${toolCatalog.size} operations available`);
 
     // Build instructions — include tool listing only when discovery is enabled
-    const baseInstructions = getInstructionsContent();
+    const baseInstructions = getInstructionsContent(TWENTY_TOOL_DISCOVERY);
     const fullInstructions = TWENTY_TOOL_DISCOVERY
       ? `${baseInstructions}\n\n${toolCatalog.generateToolListing()}`
       : baseInstructions;

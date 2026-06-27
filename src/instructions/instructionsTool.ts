@@ -17,11 +17,11 @@ export const instructionsTool: Tool = {
 /**
  * Handler for the instructions tool
  */
-export function handleInstructionsTool(): CallToolResult {
+export function handleInstructionsTool(toolDiscovery = true): CallToolResult {
   return {
     content: [{
       type: "text",
-      text: getInstructionsContent()
+      text: getInstructionsContent(toolDiscovery)
     }]
   };
 }

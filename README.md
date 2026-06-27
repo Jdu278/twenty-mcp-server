@@ -6,17 +6,20 @@ An MCP server for integrating with [Twenty CRM](https://github.com/twentyhq/twen
 
 - **Dynamic API Discovery**: Fetches the OpenAPI spec from your Twenty instance at startup, so the server always reflects your current data model (including custom objects)
 - **System Prompt Integration**: All available operations are listed in the system instructions, so the AI knows exactly what's available
-- **Two-Step Execution**: AI gets tool spec first, then executes - ensuring correct parameter usage
+- **Two Tool-Exposure Modes**: Meta-tools with a spec-then-execute workflow (default), or one native MCP tool per operation for clients with built-in tool search
 - **Safe by Default**: Only GET operations enabled by default, write operations must be explicitly allowed
 
 ## How It Works
 
-The server:
-1. **Fetches OpenAPI spec** from your Twenty instance at startup
-2. **Exposes 3 tools**:
-   - `listTwentyOperations` - List all available API operations (call first!)
-   - `getTwentyToolSpec` - Get full parameter specification for a tool
-   - `executeTwentyApiCall` - Execute the tool with parameters
+The server fetches the OpenAPI spec from your Twenty instance at startup, then exposes tools in one of two modes (see `TWENTY_TOOL_DISCOVERY`):
+
+**Discovery mode (default)** — a small set of meta-tools:
+- `getUsageInstructions` - Usage guidelines and best practices (call first!)
+- `listTwentyOperations` - List all available API operations
+- `getTwentyToolSpec` - Get the full parameter specification for one or more tools (accepts an array of names; batch related ones)
+- `executeTwentyApiCall` - Execute an operation with parameters
+
+**Native mode (`TWENTY_TOOL_DISCOVERY=false`)** — every operation is registered as its own MCP tool (e.g. `createOneCompany`, `findManyPeople`), plus `getUsageInstructions`. Best for clients with built-in tool search (e.g. Claude, ChatGPT).
 
 ## Installation
 
@@ -39,6 +42,7 @@ npm run build
 | `TWENTY_BASE_URL` | Your Twenty API base URL (e.g., `https://your-instance.com/rest`) |
 | `TWENTY_API_KEY` | Your Twenty API key |
 | `TWENTY_ALLOWED_METHODS` | Allowed HTTP methods (default: `GET`). Set to `GET,POST,PATCH,DELETE` for full access |
+| `TWENTY_TOOL_DISCOVERY` | Tool-exposure mode (default: `true`). `true` = meta-tools + operation list in instructions; `false` = one native tool per operation, for clients with built-in tool search |
 
 ### MCP Client Configuration
 
@@ -66,9 +70,9 @@ Example for Claude Desktop:
 
 **User**: "Create a new company called Acme Corp"
 
-**AI** (using the MCP tools):
+**AI** (using the MCP tools in discovery mode):
 1. Sees `createOneCompany` in system instructions
-2. Calls `getTwentyToolSpec` with `toolName: "createOneCompany"`
+2. Calls `getTwentyToolSpec` with `toolNames: ["createOneCompany"]`
 3. Gets back the input schema showing `requestBody.name` is needed
 4. Calls `executeTwentyApiCall` with:
    ```json
@@ -88,23 +92,28 @@ Example for Claude Desktop:
 
 **AI**:
 1. Sees `findManyPeople` in system instructions
-2. Calls `getTwentyToolSpec` to understand filtering options
+2. Calls `getTwentyToolSpec` with `toolNames: ["findManyPeople"]` to understand filtering options
 3. Calls `executeTwentyApiCall` with appropriate parameters
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        MCP Server                                │
+│                   MCP Server (discovery mode)                    │
 │                                                                  │
 │  Tools:                                                          │
 │  ┌────────────────────────┐                                      │
+│  │ getUsageInstructions   │──▶ Usage guidelines                 │
+│  ├────────────────────────┤                                      │
 │  │ listTwentyOperations   │──▶ Returns all available operations │
 │  ├────────────────────────┤                                      │
-│  │ getTwentyToolSpec      │──▶ Returns inputSchema for a tool   │
+│  │ getTwentyToolSpec      │──▶ Returns inputSchema for tools    │
 │  ├────────────────────────┤                                      │
 │  │ executeTwentyApiCall   │──▶ Twenty REST API                  │
 │  └────────────────────────┘                                      │
+│                                                                  │
+│  Native mode (TWENTY_TOOL_DISCOVERY=false): each operation is    │
+│  registered as its own tool, calling the Twenty REST API direct. │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
