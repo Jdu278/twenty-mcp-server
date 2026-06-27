@@ -14,11 +14,12 @@ export interface CatalogEntry {
 
 export class ToolCatalog {
   private tools = new Map<string, CatalogEntry>();
-  private allowedMethods: string[] = [];
+  private cachedToolListing: string | undefined;
 
   loadFromOpenApi(spec: OpenAPISpec, allowedMethods: string[] = ['GET']): void {
     this.tools.clear();
-    this.allowedMethods = allowedMethods.map(m => m.toLowerCase());
+    this.cachedToolListing = undefined;
+    const normalizedMethods = allowedMethods.map(m => m.toLowerCase());
     const globalSecurity = spec.security || [];
 
     for (const [path, pathItem] of Object.entries(spec.paths)) {
@@ -29,7 +30,7 @@ export class ToolCatalog {
         if (!operation || method === 'parameters') continue;
 
         // Skip methods that are not allowed
-        if (!this.allowedMethods.includes(method.toLowerCase())) continue;
+        if (!normalizedMethods.includes(method.toLowerCase())) continue;
 
         const op = operation as Operation;
         const opParams = (op.parameters || []).map(p => this.resolveParameter(p, spec.components));
@@ -51,7 +52,7 @@ export class ToolCatalog {
       }
     }
 
-    console.error(`Loaded ${this.tools.size} tools (allowed methods: ${this.allowedMethods.join(', ').toUpperCase()})`);
+    console.error(`Loaded ${this.tools.size} tools (allowed methods: ${normalizedMethods.join(', ').toUpperCase()})`);
   }
 
   private buildInputSchema(
@@ -137,6 +138,10 @@ export class ToolCatalog {
     return this.tools.get(name);
   }
 
+  entries(): IterableIterator<[string, CatalogEntry]> {
+    return this.tools.entries();
+  }
+
   getAllToolNames(): string[] {
     return [...this.tools.keys()];
   }
@@ -146,8 +151,10 @@ export class ToolCatalog {
   }
 
   generateToolListing(): string {
+    if (this.cachedToolListing) return this.cachedToolListing;
+
     const MAX_DESCRIPTION_LENGTH = 60;
-    const groupedTools = new Map<string, Array<{ name: string; description: string }>>();
+    const groupedTools = new Map<string, Array<{ name: string; method: string; description: string }>>();
 
     for (const [name, entry] of this.tools) {
       const groupName = entry.tags[0] ?? entry.pathTemplate.split('/')[1] ?? 'Other';
@@ -160,7 +167,7 @@ export class ToolCatalog {
         ? entry.description.slice(0, MAX_DESCRIPTION_LENGTH - 3) + '...'
         : entry.description;
 
-      groupedTools.get(groupName)!.push({ name, description });
+      groupedTools.get(groupName)!.push({ name, method: entry.method.toUpperCase(), description });
     }
 
     const lines = [
@@ -176,12 +183,13 @@ export class ToolCatalog {
       lines.push(`### ${groupName}`);
 
       for (const tool of groupedTools.get(groupName)!) {
-        lines.push(`- **${tool.name}**: ${tool.description}`);
+        lines.push(`- **${tool.name}** [${tool.method}]: ${tool.description}`);
       }
 
       lines.push('');
     }
 
-    return lines.join('\n');
+    this.cachedToolListing = lines.join('\n');
+    return this.cachedToolListing;
   }
 }
