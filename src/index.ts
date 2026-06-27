@@ -141,10 +141,10 @@ async function executeApiTool(
     try {
       const zodSchema = zodSchemaCache.get(toolName) ?? getZodSchemaFromJsonSchema(definition.inputSchema, toolName);
       const argsToParse = (typeof toolArgs === 'object' && toolArgs !== null) ? toolArgs : {};
-      validatedArgs = zodSchema.parse(argsToParse);
+      validatedArgs = zodSchema.parse(argsToParse) as Record<string, any>;
     } catch (error: unknown) {
       if (error instanceof ZodError) {
-        const validationErrors = error.errors.map(e => `${e.path.join('.')} (${e.code}): ${e.message}`).join(', ');
+        const validationErrors = error.issues.map(e => `${e.path.join('.')} (${e.code}): ${e.message}`).join(', ');
         const schemaHint = JSON.stringify(definition.inputSchema, null, 2);
         const validationErrorMessage = `Invalid arguments for tool '${toolName}': ${validationErrors}\n\nExpected inputSchema:\n${schemaHint}`;
         return { content: [{ type: 'text', text: validationErrorMessage }], isError: true };
@@ -307,7 +307,7 @@ IMPORTANT: Use getTwentyToolSpec FIRST to get the required parameters for the to
 The parameters object should match the inputSchema returned by getTwentyToolSpec.`,
       inputSchema: {
         toolName: z.string().describe("The exact tool name (e.g., 'findManyCompanies', 'createOnePerson')"),
-        parameters: z.record(z.unknown()).optional().describe("Parameters for the API call. Use getTwentyToolSpec to see required fields.")
+        parameters: z.record(z.string(), z.unknown()).optional().describe("Parameters for the API call. Use getTwentyToolSpec to see required fields.")
       },
       annotations: {
         readOnlyHint: false,
